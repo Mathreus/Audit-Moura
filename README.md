@@ -23,7 +23,10 @@ Os testes estão organizados por áreas e contas contábeis específicas, com o 
   - Fornecedores
   - Governança Corporativa
   - Imobilizado
+  - RPA*
   - Receita
+
+Obs: A pasta de RPA é apenas para desenvolvimento de outras automações, como Bots, Automação Web, estatísticas, etc, que não serão utilizados, a princípio, nos testes de auditoria!*
     
 # 2) Sistema de Codificação dos Testes:
 Cada teste automatizado possui um código único e descritivo que segue o padrão [SIGLA_ÁREA].[NÚMERO], exemplo:
