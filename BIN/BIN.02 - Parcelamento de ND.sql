@@ -1,1 +1,42 @@
-
+WITH ParcelamentoNotas AS (
+    SELECT
+        COD_ESTABELECIMENTO,
+        COD_CLIENTE,
+        NOME_CLIENTE,
+        DATA_TRANSACAO,
+        DATA_VENCIMENTO,
+        PERFIL_LANCAMENTO,
+        NOTA_FISCAL,
+        COMPROVANTE,
+        PARCELA,
+        VALOR_PARCELA,
+        VALOR_TITULO,
+        (VALOR_PARCELA - VALOR_TITULO) AS DIF_VALOR,
+        CASE
+            WHEN (VALOR_PARCELA - VALOR_TITULO) != 0 THEN 'Parcelado'
+            WHEN (VALOR_PARCELA - VALOR_TITULO) = 0 THEN 'OK'
+            ELSE 'Verificar'
+        END AS VALIDADOR
+    FROM
+        VW_AUDIT_RM_TRANSACOES_FECHADAS
+    WHERE
+        COD_ESTABELECIMENTO IN ('R351', 'R352') -- ALTERAR PARA O DISTRIBUIDOR QUE SERÁ AUDITADO!!!
+        AND DATA_TRANSACAO BETWEEN '2025-07-01' AND '2025-12-31' -- ALTERAR PARA O PERÍODO A SER AUDITADO!!!
+)
+SELECT
+    p.*
+FROM
+    ParcelamentoNotas p
+WHERE
+    EXISTS (
+        SELECT 1
+        FROM ParcelamentoNotas p2
+        WHERE 
+            p2.NOTA_FISCAL = p.NOTA_FISCAL
+            AND p2.COD_CLIENTE = p.COD_CLIENTE
+            AND p2.VALIDADOR = 'Parcelado'
+    )
+ORDER BY
+    p.NOTA_FISCAL,
+    p.COD_CLIENTE,
+    p.DATA_TRANSACAO;
