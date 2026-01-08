@@ -52,3 +52,5 @@ A implementação bem-sucedida desta biblioteca de automação busca:
 - Identificar anomalias com maior precisão e antecedência
 
 # Juntos, vamos elevar ainda mais o patamar da nossa Auditoria!
+
+![b2753470-51ef-4e69-99cd-904ccd8734bb](https://github.com/user-attachments/assets/0c9d558e-3995-440a-aebd-d59bdb6f4744)
