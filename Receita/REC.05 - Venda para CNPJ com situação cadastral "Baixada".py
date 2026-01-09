@@ -18,6 +18,7 @@ import pandas as pd
 import time
 import certifi
 import urllib3
+from datetime import datetime
 
 # Suprime apenas o aviso de SSL inseguro
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -33,7 +34,7 @@ df1['CNPJ'] = df1['CNPJ'].astype(str).str.replace(r'\D', '', regex=True).str.zfi
 cnpjs = df1['CNPJ']
 
 # DataFrame para armazenar os resultados
-resultados = pd.DataFrame(columns=['CNPJ', 'SITUACAO'])
+resultados = pd.DataFrame(columns=['CNPJ', 'SITUACAO', 'data_situacao'])
 
 def consulta_cnpj(cnpj):
     cnpj_formatado = str(cnpj).zfill(14)
@@ -49,7 +50,11 @@ def consulta_cnpj(cnpj):
         response.raise_for_status()
         dados = response.json()
         time.sleep(30)
-        return dados.get('situacao', 'NÃO ENCONTRADO')
+        
+        # Obtém tanto a situação quanto a data_situacao da resposta
+        situacao = dados.get('situacao', 'NÃO ENCONTRADO')
+        data_situacao = dados.get('data_situacao', 'NÃO DISPONÍVEL')
+        return situacao, data_situacao
 
     except requests.exceptions.SSLError:
         # Segunda tentativa ignorando SSL
@@ -57,17 +62,21 @@ def consulta_cnpj(cnpj):
         response.raise_for_status()
         dados = response.json()
         time.sleep(30)
-        return dados.get('situacao', 'NÃO ENCONTRADO')
+        
+        situacao = dados.get('situacao', 'NÃO ENCONTRADO')
+        data_situacao = dados.get('data_situacao', 'NÃO DISPONÍVEL')
+        return situacao, data_situacao
 
-    except Exception:
-        return "ERRO NA CONSULTA"
+    except Exception as e:
+        return f"ERRO NA CONSULTA: {str(e)}", "NÃO DISPONÍVEL"
 
 # Processa cada CNPJ
 for cnpj in cnpjs:
-    situacao = consulta_cnpj(cnpj)
+    situacao, data_situacao = consulta_cnpj(cnpj)
     cnpj_formatado = f"{cnpj[:2]}.{cnpj[2:5]}.{cnpj[5:8]}/{cnpj[8:12]}-{cnpj[12:14]}"
-    print(f"{cnpj_formatado} | {situacao}")
-    resultados.loc[len(resultados)] = [cnpj_formatado, situacao]
+    print(f"{cnpj_formatado} | {situacao} | {data_situacao}")
+    resultados.loc[len(resultados)] = [cnpj_formatado, situacao, data_situacao]
 
 # Salva os resultados
 resultados.to_excel('Resultados_Situacao_CNPJ.xlsx', index=False)
+print("Consulta concluída! Resultados salvos em 'Resultados_Situacao_CNPJ.xlsx'")
