@@ -1,49 +1,31 @@
-DECLARE @DATA_BASE DATE = '2025-12-31';
 SELECT 
     COD_ESTABELECIMENTO,
-    DATA_TRANSACAO,
     COD_CLIENTE,
-    COMPROVANTE,
-    NUM_NOTA_FICAL,
-    PESO_BIN,
-    LIQUIDACAO_NOTA_FISCAL,
+    NOME_CLIENTE,
+    DATA_TRANSACAO,
     DATA_VENCIMENTO,
     DATA_LIQUIDACAO,
-    NOME_CLIENTE,
-    COD_CONGLOMERADO,
-    NUMERO_ORIGEM,
-    SISTEMA
-
-    -- Transações originais (PESO_BIN positivos até a data base)
-    MAX(CASE 
-        WHEN DATA_TRANSACAO <= @DATA_BASE 
-            AND PESO_BIN > 0  -- Apenas valores positivos (débitos)
-        THEN PESO_BIN 
-        ELSE 0 
-    END) AS PESO_BIN_ORIGINAL,
-
-     -- Baixas (PESO_BIN negativos até a data base)
-    ABS(SUM(CASE 
-        WHEN DATA_TRANSACAO <= @DATA_BASE 
-            AND PESO_BIN < 0  -- Apenas valores negativos (créditos)
-        THEN PESO_BIN 
-        ELSE 0 
-    END)) AS PESO_BIN_BAIXADO
-
-    -- Saldo em aberto (somatório de todos os PESO_BIN até a data base)
-    SUM(CASE 
-        WHEN DATA_TRANSACAO <= @DATA_BASE 
-        THEN PESO_BIN 
-        ELSE 0 
-    END) AS SALDO_ABERTO
-    
+    NUM_NOTA_FISCAL,
+    COMPROVANTE,
+    PESO_BIN_ORIGINAL,
+    PESO_BIN_BAIXADO,
+    PESO_BIN_ABERTO,
+    VALOR,
+    STATUS,
+    DIAS_ATRASO
 FROM 
-    VW_AUDIT_RM_TRANSACOES_BIN
+    VW_AUDIT_RM_ABERTO_BIN
 WHERE 
     COD_ESTABELECIMENTO = 'R351'
-GROUP BY
-    COD_ESTABELECIMENTO,
-    COD_CLIENTE,
-    NOME_CLIENTE,
-    NUM_NOTA_FICAL,
-    COMPROVANTE
+    AND DIAS_ATRASO > 360
+    AND PESO_BIN_ABERTO > 200
+    AND DATA_TRANSACAO <= '2025-12-31'  -- DATA BASE
+    AND STATUS = 'ABERTO'
+    AND SISTEMA = 'D365'
+    AND (
+        DATA_LIQUIDACAO > '2025-12-31' 
+        OR DATA_LIQUIDACAO = '1900-01-01'
+        OR DATA_LIQUIDACAO IS NULL
+    )
+ORDER BY    
+    COD_CLIENTE;
