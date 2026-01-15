@@ -1,42 +1,44 @@
-WITH ParcelamentoNotas AS (
-    SELECT
-        COD_ESTABELECIMENTO,
+WITH ClientesMultiplosTND AS (
+    SELECT 
         COD_CLIENTE,
-        NOME_CLIENTE,
-        DATA_TRANSACAO,
-        DATA_VENCIMENTO,
-        PERFIL_LANCAMENTO,
-        NOTA_FISCAL,
-        COMPROVANTE,
-        PARCELA,
-        VALOR_PARCELA,
-        VALOR_TITULO,
-        (VALOR_PARCELA - VALOR_TITULO) AS DIF_VALOR,
-        CASE
-            WHEN (VALOR_PARCELA - VALOR_TITULO) != 0 THEN 'Parcelado'
-            WHEN (VALOR_PARCELA - VALOR_TITULO) = 0 THEN 'OK'
-            ELSE 'Verificar'
-        END AS VALIDADOR
-    FROM
+        COUNT(DISTINCT NOTA_FISCAL) as qtd_notas_fiscais,
+        SUM(VALOR_TITULO) AS VALOR_TOTAL
+    FROM 
         VW_AUDIT_RM_TRANSACOES_FECHADAS
+    WHERE 
+        COD_ESTABELECIMENTO IN ('R291', 'R292')
+        AND DATA_TRANSACAO BETWEEN '2025-07-01' AND '2025-12-31'
+        AND PERFIL_LANCAMENTO = 'TND'
+    GROUP BY 
+        COD_CLIENTE
+),
+TransacoesComContagem AS (
+    SELECT
+        v.COD_ESTABELECIMENTO,
+        v.COD_CLIENTE,    
+        v.NOME_CLIENTE,
+        v.DATA_TRANSACAO,
+        v.DATA_VENCIMENTO,
+        v.PERFIL_LANCAMENTO,
+        v.NOTA_FISCAL,
+        v.COMPROVANTE,
+        v.PARCELA,
+        v.VALOR_PARCELA,
+        v.VALOR_TITULO,
+        COUNT(v.NOTA_FISCAL) OVER (PARTITION BY v.COD_CLIENTE, v.NOTA_FISCAL) AS qtd_repeticao_nota
+    FROM
+        VW_AUDIT_RM_TRANSACOES_FECHADAS v
+    INNER JOIN 
+        ClientesMultiplosTND c ON v.COD_CLIENTE = c.COD_CLIENTE
     WHERE
-        COD_ESTABELECIMENTO IN ('R351', 'R352') -- ALTERAR PARA O DISTRIBUIDOR QUE SERÁ AUDITADO!!!
-        AND DATA_TRANSACAO BETWEEN '2025-07-01' AND '2025-12-31' -- ALTERAR PARA O PERÍODO A SER AUDITADO!!!
+        v.COD_ESTABELECIMENTO IN ('R291', 'R292')
+        AND v.DATA_TRANSACAO BETWEEN '2025-07-01' AND '2025-12-31'
+        AND v.PERFIL_LANCAMENTO = 'TND'
 )
-SELECT
-    p.*
-FROM
-    ParcelamentoNotas p
-WHERE
-    EXISTS (
-        SELECT 1
-        FROM ParcelamentoNotas p2
-        WHERE 
-            p2.NOTA_FISCAL = p.NOTA_FISCAL
-            AND p2.COD_CLIENTE = p.COD_CLIENTE
-            AND p2.VALIDADOR = 'Parcelado'
-    )
+SELECT *
+FROM TransacoesComContagem
+WHERE qtd_repeticao_nota > 1
 ORDER BY
-    p.NOTA_FISCAL,
-    p.COD_CLIENTE,
-    p.DATA_TRANSACAO;
+    COD_CLIENTE,
+    NOTA_FISCAL,
+    DATA_TRANSACAO;
