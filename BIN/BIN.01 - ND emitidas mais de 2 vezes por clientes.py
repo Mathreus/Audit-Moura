@@ -1,8 +1,3 @@
-# AUDITORES, NA LINHA 34 DEVEMOS ALTERAR O CÓDIGO DO DISTRIBUIDOR QUE IRÁ SER AUDITADO!!!
-# NA LINHA 35 DEVEMOS ALTERAR AS DATAS PARA O ESCOPO A SER AUDITADO!!!
-# O MESMO DEVE SER FEITO NAS LINHAS 89 E 90
-# NA LINHA 141 DEVEMOS INSERIR O CAMINHO ONDE A PLANILHA GERADA SERÁ SALVA!!!
-
 import pyodbc
 import pandas as pd
 import os
@@ -27,11 +22,11 @@ WITH ClientesMultiplosTND AS (
         COD_CLIENTE,
         NOME_CLIENTE,
         COUNT(DISTINCT NOTA_FISCAL) as qtd_notas_fiscais,
-        SUM(VALOR_TITULO) AS VALOR_TOTAL
+        SUM(VALOR_PARCELA) AS VALOR_TOTAL
     FROM 
         VW_AUDIT_RM_TRANSACOES_FECHADAS
     WHERE 
-        COD_ESTABELECIMENTO IN ('R351', 'R352') 
+        COD_ESTABELECIMENTO IN ('R291', 'R292') 
         AND DATA_TRANSACAO BETWEEN '2025-07-01' AND '2025-12-31'
         AND PERFIL_LANCAMENTO = 'TND'
     GROUP BY 
@@ -40,7 +35,7 @@ WITH ClientesMultiplosTND AS (
         COUNT(DISTINCT NOTA_FISCAL) > 2
 )
 SELECT
-    'Dinil' AS COD_ESTABELECIMENTO,
+    'Serve Vale' AS COD_ESTABELECIMENTO,
     c.COD_CLIENTE,    
     c.NOME_CLIENTE,
     c.qtd_notas_fiscais AS TOTAL_NF_DIFERENTES,
@@ -61,7 +56,7 @@ WITH ClientesMultiplosTND AS (
     FROM 
         VW_AUDIT_RM_TRANSACOES_FECHADAS
     WHERE 
-        COD_ESTABELECIMENTO IN ('R351', 'R352')
+        COD_ESTABELECIMENTO IN ('R291', 'R292')
         AND DATA_TRANSACAO BETWEEN '2025-07-01' AND '2025-12-31'
         AND PERFIL_LANCAMENTO = 'TND'
     GROUP BY 
@@ -86,7 +81,7 @@ FROM
 INNER JOIN 
     ClientesMultiplosTND c ON v.COD_CLIENTE = c.COD_CLIENTE
 WHERE
-    v.COD_ESTABELECIMENTO IN ('R351', 'R352')
+    v.COD_ESTABELECIMENTO IN ('R291', 'R292')
     AND v.DATA_TRANSACAO BETWEEN '2025-07-01' AND '2025-12-31'
     AND v.PERFIL_LANCAMENTO = 'TND'
 ORDER BY
@@ -196,7 +191,7 @@ try:
         
         print(f"✅ Arquivo Excel gerado com sucesso: {caminho_completo}")
         print(f"\n📊 RESUMO DO RELATÓRIO:")
-        print(f"   - Estabelecimento: R351 e R352")
+        print(f"   - Estabelecimento: R291 e R292")
         print(f"   - Período: 01/07/2025 a 31/12/2025")
         print(f"   - Perfil Lançamento: TND")
         print(f"   - Critério: Clientes com >2 notas fiscais diferentes")
@@ -206,6 +201,11 @@ try:
         
     except Exception as e:
         print(f"❌ Erro ao exportar para Excel: {e}")
+
+except pyodbc.Error as e:
+    print(f"❌ Erro na conexão com o banco de dados: {e}")
+except Exception as e:
+    print(f"❌ Erro no processamento: {e}")
 
 except pyodbc.Error as e:
     print(f"❌ Erro na conexão com o banco de dados: {e}")
