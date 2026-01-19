@@ -1,3 +1,5 @@
+DECLARE @DATA_BASE DATE = '2025-12-31';
+
 WITH DadosBase AS (
     SELECT
         COD_ESTABELECIMENTO,
@@ -33,7 +35,7 @@ WITH DadosBase AS (
         AND PERFIL_LANC = 'AVI'
         AND DATA_TRANSACAO BETWEEN '2025-10-01' AND '2025-12-31'
         AND STATUS = 'ABERTO'
-        AND LEN(REPLACE(REPLACE(REPLACE(REPLACE([CNPJ/CPF], '.', ''), '-', ''), '/', ''), ' ', '')) = '11'
+        AND LEN(REPLACE(REPLACE(REPLACE(REPLACE([CNPJ/CPF], '.', ''), '-', ''), '/', ''), ' ', '')) = 11
 )
 SELECT
     COD_ESTABELECIMENTO,
