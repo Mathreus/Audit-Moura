@@ -229,26 +229,10 @@ class CalculoIndiceCancelamento:
                 df_resultado.columns = [str(col).replace('/', '_').replace('[', '').replace(']', '') 
                                        for col in df_resultado.columns]
                 
-                # Exportar para Excel com múltiplas planilhas
+                # Exportar para Excel com APENAS a planilha principal
                 with pd.ExcelWriter(caminho_completo, engine='openpyxl') as writer:
-                    # Planilha principal com todos os dados
+                    # Apenas a planilha principal com todos os dados
                     df_resultado.to_excel(writer, sheet_name='Indice_Cancelamento', index=False)
-                    
-                    # Planilha com resumo
-                    resumo = self._criar_resumo(df_resultado)
-                    resumo.to_excel(writer, sheet_name='Resumo', index=False)
-                    
-                    # Planilha com top 20 maiores índices
-                    top_20 = df_resultado.head(20).copy()
-                    top_20.to_excel(writer, sheet_name='Top_20_Maiores', index=False)
-                    
-                    # Planilha com análise por estabelecimento
-                    analise_estabelecimento = self._criar_analise_estabelecimento(df_resultado)
-                    analise_estabelecimento.to_excel(writer, sheet_name='Analise_Estabelecimento', index=False)
-                    
-                    # Planilha com análise por classificação de risco
-                    analise_risco = self._criar_analise_risco(df_resultado)
-                    analise_risco.to_excel(writer, sheet_name='Analise_Risco', index=False)
                 
                 print(f"💾 Resultados exportados para: {caminho_completo}")
                 
@@ -279,119 +263,12 @@ class CalculoIndiceCancelamento:
                 print("❌ Não foi possível exportar os resultados.")
                 return None
     
-    def _criar_resumo(self, df_resultado):
-        """Cria um DataFrame com estatísticas resumidas"""
-        resumo_data = {
-            'Metrica': [
-                'Total de Vendedores',
-                'Vendedores com Cancelamento',
-                'Vendedores sem Cancelamento',
-                'Valor Total Faturado (R$)',
-                'Valor Total Cancelado (R$)',
-                'Percentual Total de Cancelamento (%)',
-                'Média do Índice de Cancelamento',
-                'Mediana do Índice de Cancelamento',
-                'Máximo Índice de Cancelamento',
-                'Mínimo Índice de Cancelamento',
-                'Média Percentual Cancelamento (%)',
-                'Quantidade Total Faturada',
-                'Quantidade Total Cancelada',
-                'Percentual Qtd Cancelada (%)',
-                'Notas Faturadas',
-                'Notas Canceladas',
-                'Ticket Médio Faturamento (R$)',
-                'Valor Médio Cancelamento (R$)'
-            ],
-            'Valor': [
-                len(df_resultado),
-                (df_resultado['VALOR_CANCELAMENTO'] > 0).sum(),
-                (df_resultado['VALOR_CANCELAMENTO'] == 0).sum(),
-                df_resultado['VALOR_FATURAMENTO'].sum(),
-                df_resultado['VALOR_CANCELAMENTO'].sum(),
-                (df_resultado['VALOR_CANCELAMENTO'].sum() / df_resultado['VALOR_FATURAMENTO'].sum() * 100) if df_resultado['VALOR_FATURAMENTO'].sum() > 0 else 0,
-                df_resultado['INDICE_CANCELAMENTO'].mean(),
-                df_resultado['INDICE_CANCELAMENTO'].median(),
-                df_resultado['INDICE_CANCELAMENTO'].max(),
-                df_resultado['INDICE_CANCELAMENTO'].min(),
-                df_resultado['PERCENTUAL_CANCELAMENTO'].mean(),
-                df_resultado['TOTAL_QTD_FATURADA'].sum(),
-                df_resultado['TOTAL_QTD_CANCELADA'].sum(),
-                (df_resultado['TOTAL_QTD_CANCELADA'].sum() / df_resultado['TOTAL_QTD_FATURADA'].sum() * 100) if df_resultado['TOTAL_QTD_FATURADA'].sum() > 0 else 0,
-                df_resultado['QTD_NOTAS_FATURADAS'].sum(),
-                df_resultado['QTD_NOTAS_CANCELADAS'].sum(),
-                df_resultado['TICKET_MEDIO_FATURAMENTO'].mean(),
-                df_resultado['VALOR_MEDIO_CANCELAMENTO'].mean() if (df_resultado['VALOR_CANCELAMENTO'] > 0).sum() > 0 else 0
-            ]
-        }
-        return pd.DataFrame(resumo_data)
-    
-    def _criar_analise_estabelecimento(self, df_resultado):
-        """Cria análise por estabelecimento"""
-        estabelecimentos = ['R351', 'R352']
-        analise_data = []
-        
-        for estabelecimento in estabelecimentos:
-            df_filtrado = df_resultado[df_resultado['COD_ESTABELECIMENTO'] == estabelecimento]
-            if len(df_filtrado) > 0:
-                analise_data.append({
-                    'Estabelecimento': estabelecimento,
-                    'Total Vendedores': len(df_filtrado),
-                    'Vendedores com Cancelamento': (df_filtrado['VALOR_CANCELAMENTO'] > 0).sum(),
-                    'Vendedores sem Cancelamento': (df_filtrado['VALOR_CANCELAMENTO'] == 0).sum(),
-                    'Valor Faturado (R$)': df_filtrado['VALOR_FATURAMENTO'].sum(),
-                    'Valor Cancelado (R$)': df_filtrado['VALOR_CANCELAMENTO'].sum(),
-                    'Percentual Cancelamento (%)': (df_filtrado['VALOR_CANCELAMENTO'].sum() / df_filtrado['VALOR_FATURAMENTO'].sum() * 100) if df_filtrado['VALOR_FATURAMENTO'].sum() > 0 else 0,
-                    'Média Índice Cancelamento': df_filtrado['INDICE_CANCELAMENTO'].mean(),
-                    'Média % Cancelamento': df_filtrado['PERCENTUAL_CANCELAMENTO'].mean(),
-                    'Quantidade Faturada': df_filtrado['TOTAL_QTD_FATURADA'].sum(),
-                    'Quantidade Cancelada': df_filtrado['TOTAL_QTD_CANCELADA'].sum(),
-                    'Notas Faturadas': df_filtrado['QTD_NOTAS_FATURADAS'].sum(),
-                    'Notas Canceladas': df_filtrado['QTD_NOTAS_CANCELADAS'].sum()
-                })
-        
-        # Adicionar linha de total
-        analise_data.append({
-            'Estabelecimento': 'TOTAL',
-            'Total Vendedores': len(df_resultado),
-            'Vendedores com Cancelamento': (df_resultado['VALOR_CANCELAMENTO'] > 0).sum(),
-            'Vendedores sem Cancelamento': (df_resultado['VALOR_CANCELAMENTO'] == 0).sum(),
-            'Valor Faturado (R$)': df_resultado['VALOR_FATURAMENTO'].sum(),
-            'Valor Cancelado (R$)': df_resultado['VALOR_CANCELAMENTO'].sum(),
-            'Percentual Cancelamento (%)': (df_resultado['VALOR_CANCELAMENTO'].sum() / df_resultado['VALOR_FATURAMENTO'].sum() * 100) if df_resultado['VALOR_FATURAMENTO'].sum() > 0 else 0,
-            'Média Índice Cancelamento': df_resultado['INDICE_CANCELAMENTO'].mean(),
-            'Média % Cancelamento': df_resultado['PERCENTUAL_CANCELAMENTO'].mean(),
-            'Quantidade Faturada': df_resultado['TOTAL_QTD_FATURADA'].sum(),
-            'Quantidade Cancelada': df_resultado['TOTAL_QTD_CANCELADA'].sum(),
-            'Notas Faturadas': df_resultado['QTD_NOTAS_FATURADAS'].sum(),
-            'Notas Canceladas': df_resultado['QTD_NOTAS_CANCELADAS'].sum()
-        })
-        
-        return pd.DataFrame(analise_data)
-    
-    def _criar_analise_risco(self, df_resultado):
-        """Cria análise por classificação de risco"""
-        classificacoes = ['ALTO RISCO', 'MÉDIO RISCO', 'BAIXO RISCO', 'SEM CANCELAMENTO']
-        analise_data = []
-        
-        for classificacao in classificacoes:
-            df_filtrado = df_resultado[df_resultado['CLASSIFICACAO_RISCO'] == classificacao]
-            if len(df_filtrado) > 0:
-                analise_data.append({
-                    'Classificação Risco': classificacao,
-                    'Total Vendedores': len(df_filtrado),
-                    'Percentual do Total (%)': (len(df_filtrado) / len(df_resultado) * 100),
-                    'Valor Faturado (R$)': df_filtrado['VALOR_FATURAMENTO'].sum(),
-                    'Valor Cancelado (R$)': df_filtrado['VALOR_CANCELAMENTO'].sum(),
-                    'Percentual Cancelamento (%)': (df_filtrado['VALOR_CANCELAMENTO'].sum() / df_filtrado['VALOR_FATURAMENTO'].sum() * 100) if df_filtrado['VALOR_FATURAMENTO'].sum() > 0 else 0,
-                    'Média % Cancelamento': df_filtrado['PERCENTUAL_CANCELAMENTO'].mean(),
-                    'Notas Faturadas': df_filtrado['QTD_NOTAS_FATURADAS'].sum(),
-                    'Notas Canceladas': df_filtrado['QTD_NOTAS_CANCELADAS'].sum()
-                })
-        
-        return pd.DataFrame(analise_data)
+    # Removendo as funções de criação de resumos que não serão mais usadas
+    # As funções _criar_resumo, _criar_analise_estabelecimento e _criar_analise_risco
+    # foram removidas pois não são mais necessárias para a exportação
     
     def gerar_relatorio_resumo(self, df_resultado):
-        """Gera um resumo estatístico do índice de cancelamento"""
+        """Gera um resumo estatístico do índice de cancelamento no console"""
         print("\n" + "="*80)
         print("RESUMO DO ÍNDICE DE CANCELAMENTO DE NOTAS POR VENDEDOR")
         print("="*80)
@@ -431,7 +308,7 @@ class CalculoIndiceCancelamento:
         top_10 = df_resultado.head(10)[top_10_cols]
         print(top_10.to_string(index=False))
         
-        # Análise por classificação de risco
+        # Análise por classificação de risco (apenas no console)
         print(f"\n⚠️  ANÁLISE POR CLASSIFICAÇÃO DE RISCO:")
         print("-"*80)
         for classificacao in ['ALTO RISCO', 'MÉDIO RISCO', 'BAIXO RISCO', 'SEM CANCELAMENTO']:
@@ -442,10 +319,10 @@ class CalculoIndiceCancelamento:
                 print(f"  Valor Faturado: R$ {df_filtrado['VALOR_FATURAMENTO'].sum():,.2f}")
                 print(f"  Valor Cancelado: R$ {df_filtrado['VALOR_CANCELAMENTO'].sum():,.2f}")
         
-        # Análise por estabelecimento
+        # Análise por estabelecimento (apenas no console)
         print(f"\n🏢 ANÁLISE POR ESTABELECIMENTO:")
         print("-"*80)
-        for estabelecimento in ['R351', 'R352']:
+        for estabelecimento in ['R281']:  # Mantendo apenas R281 conforme seu código original
             df_filtrado = df_resultado[df_resultado['COD_ESTABELECIMENTO'] == estabelecimento]
             if len(df_filtrado) > 0:
                 print(f"\n{estabelecimento}:")
@@ -490,7 +367,7 @@ class CalculoIndiceCancelamento:
                     print("\n📋 Primeiras linhas do resultado:")
                     print(df_resultado.head().to_string(index=False))
                     
-                    # Gerar relatório resumo
+                    # Gerar relatório resumo (apenas no console)
                     self.gerar_relatorio_resumo(df_resultado)
                     
                     # Exportar resultados
@@ -502,6 +379,7 @@ class CalculoIndiceCancelamento:
                         if arquivo:
                             print(f"\n✅ Arquivo Excel criado com sucesso!")
                             print(f"📍 Local: {arquivo}")
+                            print("📑 O arquivo contém apenas a planilha 'Indice_Cancelamento' com todos os dados")
                         
                     return df_resultado
                 else:
@@ -558,12 +436,7 @@ def main():
         print("="*80)
         print(f"📊 Total de vendedores processados: {len(resultados)}")
         print(f"📂 Arquivo Excel salvo em: {analise.caminho_base}")
-        print("📑 O arquivo contém 5 planilhas com análises detalhadas:")
-        print("   1. Indice_Cancelamento - Dados completos")
-        print("   2. Resumo - Estatísticas gerais")
-        print("   3. Top_20_Maiores - Maiores índices de cancelamento")
-        print("   4. Analise_Estabelecimento - Análise por R351/R352")
-        print("   5. Analise_Risco - Análise por classificação de risco")
+        print("📑 O arquivo contém apenas a planilha 'Indice_Cancelamento' com todos os dados")
     else:
         print("\n" + "="*80)
         print("❌ FALHA NA ANÁLISE")
