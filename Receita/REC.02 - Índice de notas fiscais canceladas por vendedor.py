@@ -20,6 +20,27 @@ class CalculoIndiceCancelamento:
         # Definir o caminho específico para salvar
         self.caminho_base = r'C:\Users\matheus.melo\OneDrive - Acumuladores Moura SA\Documentos\Drive - Matheus Melo\Auditoria\2026\03. Automações\Validações'
         
+        # Parâmetros padrão
+        self.cod_estabelecimento = 'R281'
+        self.data_inicio = '2025-01-01'
+        self.data_fim = '2025-12-31'
+    
+    def definir_parametros(self, cod_estabelecimento=None, data_inicio=None, data_fim=None):
+        """
+        Define os parâmetros para a análise
+        """
+        if cod_estabelecimento:
+            self.cod_estabelecimento = cod_estabelecimento
+        if data_inicio:
+            self.data_inicio = data_inicio
+        if data_fim:
+            self.data_fim = data_fim
+            
+        print(f"✅ Parâmetros definidos:")
+        print(f"   Estabelecimento: {self.cod_estabelecimento}")
+        print(f"   Data início: {self.data_inicio}")
+        print(f"   Data fim: {self.data_fim}")
+    
     def conectar_banco(self):
         """Estabelece conexão com o banco de dados"""
         try:
@@ -47,7 +68,7 @@ class CalculoIndiceCancelamento:
             print(f"❌ Erro ao executar query: {e}")
             return None
     
-    def obter_dados_cancelamentos(self, data_inicio='2025-01-01', data_fim='2025-12-31'):
+    def obter_dados_cancelamentos(self):
         """Obtém os dados de notas canceladas por vendedor"""
         query_cancelamentos = f"""
         SELECT
@@ -59,8 +80,8 @@ class CalculoIndiceCancelamento:
         FROM 
             VW_AUDIT_RM_ORDENS_VENDA
         WHERE
-            COD_ESTABELECIMENTO = 'R281'
-            AND DATA_NOTA_FISCAL BETWEEN '{data_inicio}' AND '{data_fim}' 
+            COD_ESTABELECIMENTO = '{self.cod_estabelecimento}'
+            AND DATA_NOTA_FISCAL BETWEEN '{self.data_inicio}' AND '{self.data_fim}' 
             AND PARA_FATURAMENTO = 'Sim'
             AND NUM_NOTA_FISCAL LIKE '%CAN%'
         GROUP BY
@@ -74,11 +95,12 @@ class CalculoIndiceCancelamento:
             VALOR_CANCELAMENTO ASC
         """
         
-        print("📊 Executando query de notas canceladas...")
+        print(f"📊 Executando query de notas canceladas para estabelecimento {self.cod_estabelecimento}...")
+        print(f"   Período: {self.data_inicio} a {self.data_fim}")
         df_cancelamentos = self.executar_query(query_cancelamentos)
         return df_cancelamentos
     
-    def obter_dados_faturamento(self, data_inicio='2025-01-01', data_fim='2025-12-31'):
+    def obter_dados_faturamento(self):
         """Obtém os dados de faturamento por vendedor"""
         query_faturamento = f"""
         SELECT
@@ -90,8 +112,8 @@ class CalculoIndiceCancelamento:
         FROM 
             VW_AUDIT_RM_ORDENS_VENDA
         WHERE 
-            COD_ESTABELECIMENTO = 'R281'
-            AND DATA_NOTA_FISCAL BETWEEN '{data_inicio}' AND '{data_fim}'  
+            COD_ESTABELECIMENTO = '{self.cod_estabelecimento}'
+            AND DATA_NOTA_FISCAL BETWEEN '{self.data_inicio}' AND '{self.data_fim}'  
             AND PARA_FATURAMENTO = 'Sim'
             AND NUM_NOTA_FISCAL NOT LIKE '%EST%'
             AND CFOP IN ('5.100', '5.101', '5.102', '5.103', '5.104', '5.105', '5.106', '5.109', '5.110', '5.111', 
@@ -113,7 +135,8 @@ class CalculoIndiceCancelamento:
             VALOR_FATURAMENTO ASC
         """
         
-        print("📈 Executando query de faturamento...")
+        print(f"📈 Executando query de faturamento para estabelecimento {self.cod_estabelecimento}...")
+        print(f"   Período: {self.data_inicio} a {self.data_fim}")
         df_faturamento = self.executar_query(query_faturamento)
         return df_faturamento
     
@@ -218,11 +241,14 @@ class CalculoIndiceCancelamento:
                 print(f"📁 Criando diretório: {self.caminho_base}")
                 os.makedirs(self.caminho_base)
             
-            # Criar nome do arquivo com data e hora
+            # Criar nome do arquivo com estabelecimento, período, data e hora
+            estabelecimento_codigo = self.cod_estabelecimento.replace('/', '_')
+            data_inicio_formatada = self.data_inicio.replace('-', '')
+            data_fim_formatada = self.data_fim.replace('-', '')
             data_atual = datetime.now().strftime('%Y%m%d_%H%M%S')
             
             if formato.lower() == 'excel':
-                nome_arquivo = f'indice_cancelamento_vendedores_{data_atual}.xlsx'
+                nome_arquivo = f'indice_cancelamento_{estabelecimento_codigo}_{data_inicio_formatada}_a_{data_fim_formatada}_{data_atual}.xlsx'
                 caminho_completo = os.path.join(self.caminho_base, nome_arquivo)
                 
                 # Garantir que os nomes das colunas sejam strings válidas para Excel
@@ -237,13 +263,13 @@ class CalculoIndiceCancelamento:
                 print(f"💾 Resultados exportados para: {caminho_completo}")
                 
                 # Também criar um arquivo CSV
-                nome_csv = f'indice_cancelamento_vendedores_{data_atual}.csv'
+                nome_csv = f'indice_cancelamento_{estabelecimento_codigo}_{data_inicio_formatada}_a_{data_fim_formatada}_{data_atual}.csv'
                 caminho_csv = os.path.join(self.caminho_base, nome_csv)
                 df_resultado.to_csv(caminho_csv, index=False, sep=';', decimal=',', encoding='utf-8')
                 print(f"📄 Arquivo CSV também criado em: {caminho_csv}")
                 
             else:
-                nome_arquivo = f'indice_cancelamento_vendedores_{data_atual}.csv'
+                nome_arquivo = f'indice_cancelamento_{estabelecimento_codigo}_{data_inicio_formatada}_a_{data_fim_formatada}_{data_atual}.csv'
                 caminho_completo = os.path.join(self.caminho_base, nome_arquivo)
                 df_resultado.to_csv(caminho_completo, index=False, sep=';', decimal=',', encoding='utf-8')
                 print(f"💾 Resultados exportados para: {caminho_completo}")
@@ -263,14 +289,12 @@ class CalculoIndiceCancelamento:
                 print("❌ Não foi possível exportar os resultados.")
                 return None
     
-    # Removendo as funções de criação de resumos que não serão mais usadas
-    # As funções _criar_resumo, _criar_analise_estabelecimento e _criar_analise_risco
-    # foram removidas pois não são mais necessárias para a exportação
-    
     def gerar_relatorio_resumo(self, df_resultado):
         """Gera um resumo estatístico do índice de cancelamento no console"""
         print("\n" + "="*80)
-        print("RESUMO DO ÍNDICE DE CANCELAMENTO DE NOTAS POR VENDEDOR")
+        print(f"RESUMO DO ÍNDICE DE CANCELAMENTO DE NOTAS POR VENDEDOR")
+        print(f"Estabelecimento: {self.cod_estabelecimento}")
+        print(f"Período: {self.data_inicio} a {self.data_fim}")
         print("="*80)
         
         # Estatísticas gerais
@@ -319,33 +343,41 @@ class CalculoIndiceCancelamento:
                 print(f"  Valor Faturado: R$ {df_filtrado['VALOR_FATURAMENTO'].sum():,.2f}")
                 print(f"  Valor Cancelado: R$ {df_filtrado['VALOR_CANCELAMENTO'].sum():,.2f}")
         
-        # Análise por estabelecimento (apenas no console)
+        # Análise por estabelecimento atual (apenas no console)
         print(f"\n🏢 ANÁLISE POR ESTABELECIMENTO:")
         print("-"*80)
-        for estabelecimento in ['R281']:  # Mantendo apenas R281 conforme seu código original
-            df_filtrado = df_resultado[df_resultado['COD_ESTABELECIMENTO'] == estabelecimento]
-            if len(df_filtrado) > 0:
-                print(f"\n{estabelecimento}:")
-                print(f"  Vendedores: {len(df_filtrado)}")
-                print(f"  Média % Cancelamento: {df_filtrado['PERCENTUAL_CANCELAMENTO'].mean():.2f}%")
-                print(f"  Valor Faturado: R$ {df_filtrado['VALOR_FATURAMENTO'].sum():,.2f}")
-                print(f"  Valor Cancelado: R$ {df_filtrado['VALOR_CANCELAMENTO'].sum():,.2f}")
+        df_filtrado = df_resultado[df_resultado['COD_ESTABELECIMENTO'] == self.cod_estabelecimento]
+        if len(df_filtrado) > 0:
+            print(f"\n{self.cod_estabelecimento}:")
+            print(f"  Vendedores: {len(df_filtrado)}")
+            print(f"  Média % Cancelamento: {df_filtrado['PERCENTUAL_CANCELAMENTO'].mean():.2f}%")
+            print(f"  Valor Faturado: R$ {df_filtrado['VALOR_FATURAMENTO'].sum():,.2f}")
+            print(f"  Valor Cancelado: R$ {df_filtrado['VALOR_CANCELAMENTO'].sum():,.2f}")
     
-    def executar_analise_completa(self, data_inicio='2025-01-01', 
-                                 data_fim='2025-12-31',
-                                 exportar=True):
-        """Executa toda a análise completa"""
+    def executar_analise_completa(self, cod_estabelecimento=None, data_inicio=None, 
+                                 data_fim=None, exportar=True):
+        """Executa toda a análise completa com parâmetros personalizáveis"""
+        
+        # Definir parâmetros se fornecidos
+        if cod_estabelecimento:
+            self.cod_estabelecimento = cod_estabelecimento
+        if data_inicio:
+            self.data_inicio = data_inicio
+        if data_fim:
+            self.data_fim = data_fim
         
         print(f"\n📂 Diretório de saída configurado: {self.caminho_base}")
+        print(f"🏢 Estabelecimento: {self.cod_estabelecimento}")
+        print(f"📅 Período: {self.data_inicio} a {self.data_fim}")
         
         # Conectar ao banco
         if not self.conectar_banco():
             return
         
         try:
-            # Obter dados (mesmo período para ambos)
-            df_cancelamentos = self.obter_dados_cancelamentos(data_inicio, data_fim)
-            df_faturamento = self.obter_dados_faturamento(data_inicio, data_fim)
+            # Obter dados
+            df_cancelamentos = self.obter_dados_cancelamentos()
+            df_faturamento = self.obter_dados_faturamento()
             
             if df_cancelamentos is not None and df_faturamento is not None:
                 print(f"\n📊 Dados de cancelamentos obtidos: {len(df_cancelamentos)} registros")
@@ -411,29 +443,50 @@ def main():
     # Criar instância com as credenciais fornecidas
     analise = CalculoIndiceCancelamento()
     
-    # Datas personalizáveis
-    datas = {
+    # Parâmetros personalizáveis
+    parametros = {
+        'cod_estabelecimento': 'R281',
         'data_inicio': '2025-01-01',
         'data_fim': '2025-12-31'
     }
     
-    print(f"\n📅 Período de análise:")
-    print(f"De: {datas['data_inicio']} até {datas['data_fim']}")
+    print(f"\n📋 Parâmetros atuais:")
+    print(f"   Estabelecimento: {parametros['cod_estabelecimento']}")
+    print(f"   Data início: {parametros['data_inicio']}")
+    print(f"   Data fim: {parametros['data_fim']}")
     
-    # Perguntar se deseja usar datas diferentes
-    alterar_datas = input("\n📝 Deseja alterar as datas? (s/n): ").strip().lower()
+    # Perguntar se deseja alterar os parâmetros
+    alterar_parametros = input("\n📝 Deseja alterar os parâmetros? (s/n): ").strip().lower()
     
-    if alterar_datas == 's':
-        datas['data_inicio'] = input("Data início (YYYY-MM-DD): ").strip()
-        datas['data_fim'] = input("Data fim (YYYY-MM-DD): ").strip()
+    if alterar_parametros == 's':
+        print("\n📝 Insira os novos parâmetros (deixe em branco para manter o atual):")
+        
+        novo_estabelecimento = input(f"Estabelecimento [{parametros['cod_estabelecimento']}]: ").strip()
+        if novo_estabelecimento:
+            parametros['cod_estabelecimento'] = novo_estabelecimento
+        
+        nova_data_inicio = input(f"Data início [{parametros['data_inicio']}]: ").strip()
+        if nova_data_inicio:
+            parametros['data_inicio'] = nova_data_inicio
+        
+        nova_data_fim = input(f"Data fim [{parametros['data_fim']}]: ").strip()
+        if nova_data_fim:
+            parametros['data_fim'] = nova_data_fim
     
     # Executar análise completa
-    resultados = analise.executar_analise_completa(**datas, exportar=True)
+    resultados = analise.executar_analise_completa(
+        cod_estabelecimento=parametros['cod_estabelecimento'],
+        data_inicio=parametros['data_inicio'],
+        data_fim=parametros['data_fim'],
+        exportar=True
+    )
     
     if resultados is not None:
         print("\n" + "="*80)
         print("✅ ANÁLISE CONCLUÍDA COM SUCESSO!")
         print("="*80)
+        print(f"🏢 Estabelecimento analisado: {analise.cod_estabelecimento}")
+        print(f"📅 Período: {analise.data_inicio} a {analise.data_fim}")
         print(f"📊 Total de vendedores processados: {len(resultados)}")
         print(f"📂 Arquivo Excel salvo em: {analise.caminho_base}")
         print("📑 O arquivo contém apenas a planilha 'Indice_Cancelamento' com todos os dados")
@@ -447,18 +500,83 @@ def versao_rapida():
     """
     Versão rápida sem interação
     """
-    print("⚡ Executando versão rápida com datas padrão...")
+    print("⚡ Executando versão rápida com parâmetros padrão...")
     
     analise = CalculoIndiceCancelamento()
     
-    # Usar datas padrão
+    # Usar parâmetros padrão
     resultados = analise.executar_analise_completa(
+        cod_estabelecimento='R281',
         data_inicio='2025-01-01',
         data_fim='2025-12-31',
         exportar=True
     )
     
     return resultados
+
+# Nova função para analisar múltiplos estabelecimentos
+def analisar_multiplos_estabelecimentos():
+    """
+    Analisa múltiplos estabelecimentos em sequência
+    """
+    print("="*80)
+    print("🏢 ANÁLISE DE MÚLTIPLOS ESTABELECIMENTOS")
+    print("="*80)
+    
+    # Solicitar estabelecimentos
+    estabelecimentos_input = input("Digite os códigos dos estabelecimentos (separados por vírgula): ").strip()
+    estabelecimentos = [e.strip() for e in estabelecimentos_input.split(',') if e.strip()]
+    
+    if not estabelecimentos:
+        print("❌ Nenhum estabelecimento informado.")
+        return
+    
+    print(f"\n📋 Estabelecimentos a serem analisados: {', '.join(estabelecimentos)}")
+    
+    # Solicitar período
+    data_inicio = input(f"Data início [2025-01-01]: ").strip() or '2025-01-01'
+    data_fim = input(f"Data fim [2025-12-31]: ").strip() or '2025-12-31'
+    
+    print(f"\n📅 Período para todos os estabelecimentos: {data_inicio} a {data_fim}")
+    
+    confirmar = input("\n📝 Confirmar análise? (s/n): ").strip().lower()
+    
+    if confirmar != 's':
+        print("❌ Análise cancelada.")
+        return
+    
+    resultados_completos = []
+    
+    for estabelecimento in estabelecimentos:
+        print(f"\n{'='*60}")
+        print(f"📊 ANALISANDO ESTABELECIMENTO: {estabelecimento}")
+        print(f"{'='*60}")
+        
+        analise = CalculoIndiceCancelamento()
+        
+        # Executar análise para este estabelecimento
+        resultado = analise.executar_analise_completa(
+            cod_estabelecimento=estabelecimento,
+            data_inicio=data_inicio,
+            data_fim=data_fim,
+            exportar=True
+        )
+        
+        if resultado is not None:
+            resultados_completos.append((estabelecimento, resultado))
+            print(f"✅ Estabelecimento {estabelecimento} analisado com sucesso!")
+        else:
+            print(f"❌ Falha na análise do estabelecimento {estabelecimento}")
+    
+    print(f"\n{'='*80}")
+    print("📊 RESUMO DA ANÁLISE DE MÚLTIPLOS ESTABELECIMENTOS")
+    print(f"{'='*80}")
+    
+    for estabelecimento, resultado in resultados_completos:
+        if resultado is not None:
+            print(f"🏢 {estabelecimento}: {len(resultado)} vendedores analisados ✓")
+    
+    return resultados_completos
 
 # Executar o script
 if __name__ == "__main__":
@@ -468,16 +586,19 @@ if __name__ == "__main__":
     
     # Escolher modo de execução
     print("\n🎯 Modo de execução:")
-    print("1 - Versão interativa (permite alterar datas)")
-    print("2 - Versão rápida (usa datas padrão)")
+    print("1 - Versão interativa (permite alterar estabelecimento e datas)")
+    print("2 - Versão rápida (usa parâmetros padrão)")
+    print("3 - Análise de múltiplos estabelecimentos")
     
     try:
-        modo = input("Escolha (1/2): ").strip()
+        modo = input("\nEscolha (1/2/3): ").strip()
         
         if modo == '1':
             main()
         elif modo == '2':
             versao_rapida()
+        elif modo == '3':
+            analisar_multiplos_estabelecimentos()
         else:
             print("⚠️  Opção inválida. Executando versão interativa...")
             main()
