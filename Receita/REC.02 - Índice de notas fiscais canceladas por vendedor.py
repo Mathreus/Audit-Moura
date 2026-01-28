@@ -1,1 +1,616 @@
+import pyodbc
+import pandas as pd
+from datetime import datetime
+import os
+import warnings
+warnings.filterwarnings('ignore')
 
+class CalculoIndiceCancelamento:
+    def __init__(self):
+        """
+        Inicializa com as credenciais fornecidas
+        """
+        self.server = 'DCMDWF01A.MOURA.INT'
+        self.database = 'ax'
+        self.username = 'uAuditoria'
+        self.password = '@ud!t0$!@202&22'
+        self.driver = '{SQL Server}'
+        self.conn = None
+        
+        # Definir o caminho específico para salvar
+        self.caminho_base = r'C:\Users\matheus.melo\OneDrive - Acumuladores Moura SA\Documentos\Drive - Matheus Melo\Auditoria\2026\03. Automações\Validações'
+        
+    def conectar_banco(self):
+        """Estabelece conexão com o banco de dados"""
+        try:
+            connection_string = (
+                f'DRIVER={self.driver};'
+                f'SERVER={self.server};'
+                f'DATABASE={self.database};'
+                f'UID={self.username};'
+                f'PWD={self.password};'
+            )
+            
+            self.conn = pyodbc.connect(connection_string)
+            print("✅ Conexão estabelecida com sucesso!")
+            return True
+        except Exception as e:
+            print(f"❌ Erro ao conectar ao banco de dados: {e}")
+            return False
+    
+    def executar_query(self, query):
+        """Executa uma query SQL e retorna um DataFrame"""
+        try:
+            df = pd.read_sql_query(query, self.conn)
+            return df
+        except Exception as e:
+            print(f"❌ Erro ao executar query: {e}")
+            return None
+    
+    def obter_dados_cancelamentos(self, data_inicio='2025-01-01', data_fim='2025-12-31'):
+        """Obtém os dados de notas canceladas por vendedor"""
+        query_cancelamentos = f"""
+        SELECT
+            COD_ESTABELECIMENTO,
+            VENDEDOR,
+            SUM(QUANTIDADE) AS TOTAL_QTD_CANCELADA,
+            SUM(VALOR) AS VALOR_CANCELAMENTO,
+            COUNT(*) AS QTD_NOTAS_CANCELADAS
+        FROM 
+            VW_AUDIT_RM_ORDENS_VENDA
+        WHERE
+            COD_ESTABELECIMENTO = 'R281'
+            AND DATA_NOTA_FISCAL BETWEEN '{data_inicio}' AND '{data_fim}' 
+            AND PARA_FATURAMENTO = 'Sim'
+            AND NUM_NOTA_FISCAL LIKE '%CAN%'
+        GROUP BY
+            COD_ESTABELECIMENTO,
+            VENDEDOR
+        HAVING 
+            COUNT(*) <> 0
+        ORDER BY
+            COD_ESTABELECIMENTO,
+            VENDEDOR,
+            VALOR_CANCELAMENTO ASC
+        """
+        
+        print("📊 Executando query de notas canceladas...")
+        df_cancelamentos = self.executar_query(query_cancelamentos)
+        return df_cancelamentos
+    
+    def obter_dados_faturamento(self, data_inicio='2025-01-01', data_fim='2025-12-31'):
+        """Obtém os dados de faturamento por vendedor"""
+        query_faturamento = f"""
+        SELECT
+            COD_ESTABELECIMENTO,
+            VENDEDOR,
+            SUM(QUANTIDADE) AS TOTAL_QTD_FATURADA,
+            ABS(SUM(VALOR)) AS VALOR_FATURAMENTO,
+            COUNT(*) AS QTD_NOTAS_FATURADAS
+        FROM 
+            VW_AUDIT_RM_ORDENS_VENDA
+        WHERE 
+            COD_ESTABELECIMENTO = 'R281'
+            AND DATA_NOTA_FISCAL BETWEEN '{data_inicio}' AND '{data_fim}'  
+            AND PARA_FATURAMENTO = 'Sim'
+            AND NUM_NOTA_FISCAL NOT LIKE '%EST%'
+            AND CFOP IN ('5.100', '5.101', '5.102', '5.103', '5.104', '5.105', '5.106', '5.109', '5.110', '5.111', 
+                        '5.112', '5.113', '5.114', '5.115', '5.116', '5.117', '5.118', '5.119', '5.120', '5.122', 
+                        '5.123', '5.250','5.251', '5.252', '5.253', '5.254', '5.255', '5.256', '5.257', '5.258', 
+                        '5.401', '5.402', '5.403', '5.405', '5.651', '5.652', '5.653', '5.654', '5.655', '5.656',
+                        '5.667', '6.101', '6.102', '6.103','6.104', '6.105', '6.106', '6.107', '6.108', '6.109',
+                        '6.110', '6.111', '6.112', '6.113', '6.114', '6.115', '6.116', '6.117', '6.118', '6.119',
+                        '6.120', '6.122', '6.123', '6.250', '6.251', '6.252', '6.253', '6.254', '6.255', '6.256',
+                        '6.257', '6.258', '6.401', '6.402', '6.403', '6.404', '6.651', '6.652', '6.653', '6.654',
+                        '6.655', '6.656', '6.667', '7.100', '7.101', '7.102', '7.105', '7.106','7.127', '7.250', 
+                        '7.251', '7.651', '7.654', '7.667')
+        GROUP BY    
+            COD_ESTABELECIMENTO,
+            VENDEDOR
+        ORDER BY    
+            COD_ESTABELECIMENTO,
+            VENDEDOR,
+            VALOR_FATURAMENTO ASC
+        """
+        
+        print("📈 Executando query de faturamento...")
+        df_faturamento = self.executar_query(query_faturamento)
+        return df_faturamento
+    
+    def calcular_indice_cancelamento(self, df_cancelamentos, df_faturamento):
+        """Calcula o índice de cancelamento: VALOR_CANCELADO / VALOR_FATURADO"""
+        if df_cancelamentos is None or df_faturamento is None:
+            print("❌ Erro: Dados não disponíveis para cálculo")
+            return None
+        
+        # Criar chave única para merge
+        df_faturamento['chave'] = df_faturamento['COD_ESTABELECIMENTO'] + '_' + df_faturamento['VENDEDOR'].astype(str)
+        df_cancelamentos['chave'] = df_cancelamentos['COD_ESTABELECIMENTO'] + '_' + df_cancelamentos['VENDEDOR'].astype(str)
+        
+        # Realizar merge dos dataframes (LEFT JOIN para manter todos os vendedores com faturamento)
+        df_consolidado = pd.merge(
+            df_faturamento,
+            df_cancelamentos[['chave', 'VALOR_CANCELAMENTO', 'TOTAL_QTD_CANCELADA', 'QTD_NOTAS_CANCELADAS']],
+            on='chave',
+            how='left'
+        )
+        
+        # Preencher valores NaN com 0 (vendedores sem cancelamentos)
+        df_consolidado['VALOR_CANCELAMENTO'] = df_consolidado['VALOR_CANCELAMENTO'].fillna(0)
+        df_consolidado['TOTAL_QTD_CANCELADA'] = df_consolidado['TOTAL_QTD_CANCELADA'].fillna(0)
+        df_consolidado['QTD_NOTAS_CANCELADAS'] = df_consolidado['QTD_NOTAS_CANCELADAS'].fillna(0)
+        
+        # Calcular índice de cancelamento
+        df_consolidado['INDICE_CANCELAMENTO'] = df_consolidado.apply(
+            lambda row: row['VALOR_CANCELAMENTO'] / row['VALOR_FATURAMENTO'] 
+            if row['VALOR_FATURAMENTO'] > 0 else 0,
+            axis=1
+        )
+        
+        # Calcular percentual de cancelamento
+        df_consolidado['PERCENTUAL_CANCELAMENTO'] = df_consolidado['INDICE_CANCELAMENTO'] * 100
+        
+        # Calcular percentual de quantidade cancelada
+        df_consolidado['PERCENTUAL_QTD_CANCELADA'] = df_consolidado.apply(
+            lambda row: (row['TOTAL_QTD_CANCELADA'] / row['TOTAL_QTD_FATURADA'] * 100)
+            if row['TOTAL_QTD_FATURADA'] > 0 else 0,
+            axis=1
+        )
+        
+        # Calcular ticket médio
+        df_consolidado['TICKET_MEDIO_FATURAMENTO'] = df_consolidado.apply(
+            lambda row: row['VALOR_FATURAMENTO'] / row['QTD_NOTAS_FATURADAS']
+            if row['QTD_NOTAS_FATURADAS'] > 0 else 0,
+            axis=1
+        )
+        
+        df_consolidado['VALOR_MEDIO_CANCELAMENTO'] = df_consolidado.apply(
+            lambda row: row['VALOR_CANCELAMENTO'] / row['QTD_NOTAS_CANCELADAS']
+            if row['QTD_NOTAS_CANCELADAS'] > 0 else 0,
+            axis=1
+        )
+        
+        # Classificar por risco de cancelamento
+        df_consolidado['CLASSIFICACAO_RISCO'] = df_consolidado.apply(
+            lambda row: self._classificar_risco(row['PERCENTUAL_CANCELAMENTO']),
+            axis=1
+        )
+        
+        # Ordenar por maior índice de cancelamento
+        df_consolidado = df_consolidado.sort_values(['INDICE_CANCELAMENTO', 'VALOR_CANCELAMENTO'], ascending=[False, False])
+        
+        # Adicionar ranking
+        df_consolidado['RANKING'] = range(1, len(df_consolidado) + 1)
+        
+        # Remover coluna auxiliar
+        df_consolidado = df_consolidado.drop('chave', axis=1)
+        
+        # Reorganizar colunas
+        colunas = [
+            'RANKING', 'COD_ESTABELECIMENTO', 'VENDEDOR', 'CLASSIFICACAO_RISCO',
+            'VALOR_FATURAMENTO', 'QTD_NOTAS_FATURADAS', 'TOTAL_QTD_FATURADA', 'TICKET_MEDIO_FATURAMENTO',
+            'VALOR_CANCELAMENTO', 'QTD_NOTAS_CANCELADAS', 'TOTAL_QTD_CANCELADA', 'VALOR_MEDIO_CANCELAMENTO',
+            'INDICE_CANCELAMENTO', 'PERCENTUAL_CANCELAMENTO', 'PERCENTUAL_QTD_CANCELADA'
+        ]
+        
+        # Manter apenas as colunas que existem
+        colunas = [col for col in colunas if col in df_consolidado.columns]
+        df_consolidado = df_consolidado[colunas]
+        
+        return df_consolidado
+    
+    def _classificar_risco(self, percentual):
+        """Classifica o vendedor pelo percentual de cancelamento"""
+        if percentual == 0:
+            return 'SEM CANCELAMENTO'
+        elif percentual > 10:
+            return 'ALTO RISCO'
+        elif percentual > 5:
+            return 'MÉDIO RISCO'
+        else:
+            return 'BAIXO RISCO'
+    
+    def exportar_resultados(self, df_resultado, formato='excel'):
+        """Exporta os resultados para Excel ou CSV no caminho especificado"""
+        try:
+            # Verificar se o diretório existe, se não, criar
+            if not os.path.exists(self.caminho_base):
+                print(f"📁 Criando diretório: {self.caminho_base}")
+                os.makedirs(self.caminho_base)
+            
+            # Criar nome do arquivo com data e hora
+            data_atual = datetime.now().strftime('%Y%m%d_%H%M%S')
+            
+            if formato.lower() == 'excel':
+                nome_arquivo = f'indice_cancelamento_vendedores_{data_atual}.xlsx'
+                caminho_completo = os.path.join(self.caminho_base, nome_arquivo)
+                
+                # Garantir que os nomes das colunas sejam strings válidas para Excel
+                df_resultado.columns = [str(col).replace('/', '_').replace('[', '').replace(']', '') 
+                                       for col in df_resultado.columns]
+                
+                # Exportar para Excel com múltiplas planilhas
+                with pd.ExcelWriter(caminho_completo, engine='openpyxl') as writer:
+                    # Planilha principal com todos os dados
+                    df_resultado.to_excel(writer, sheet_name='Indice_Cancelamento', index=False)
+                    
+                    # Planilha com resumo
+                    resumo = self._criar_resumo(df_resultado)
+                    resumo.to_excel(writer, sheet_name='Resumo', index=False)
+                    
+                    # Planilha com top 20 maiores índices
+                    top_20 = df_resultado.head(20).copy()
+                    top_20.to_excel(writer, sheet_name='Top_20_Maiores', index=False)
+                    
+                    # Planilha com análise por estabelecimento
+                    analise_estabelecimento = self._criar_analise_estabelecimento(df_resultado)
+                    analise_estabelecimento.to_excel(writer, sheet_name='Analise_Estabelecimento', index=False)
+                    
+                    # Planilha com análise por classificação de risco
+                    analise_risco = self._criar_analise_risco(df_resultado)
+                    analise_risco.to_excel(writer, sheet_name='Analise_Risco', index=False)
+                
+                print(f"💾 Resultados exportados para: {caminho_completo}")
+                
+                # Também criar um arquivo CSV
+                nome_csv = f'indice_cancelamento_vendedores_{data_atual}.csv'
+                caminho_csv = os.path.join(self.caminho_base, nome_csv)
+                df_resultado.to_csv(caminho_csv, index=False, sep=';', decimal=',', encoding='utf-8')
+                print(f"📄 Arquivo CSV também criado em: {caminho_csv}")
+                
+            else:
+                nome_arquivo = f'indice_cancelamento_vendedores_{data_atual}.csv'
+                caminho_completo = os.path.join(self.caminho_base, nome_arquivo)
+                df_resultado.to_csv(caminho_completo, index=False, sep=';', decimal=',', encoding='utf-8')
+                print(f"💾 Resultados exportados para: {caminho_completo}")
+            
+            return caminho_completo
+            
+        except Exception as e:
+            print(f"❌ Erro ao exportar resultados: {e}")
+            # Tentar salvar no diretório atual como fallback
+            try:
+                data_atual = datetime.now().strftime('%Y%m%d_%H%M%S')
+                nome_arquivo = f'indice_cancelamento_vendedores_{data_atual}.xlsx'
+                df_resultado.to_excel(nome_arquivo, index=False)
+                print(f"💾 Resultados exportados para o diretório atual: {nome_arquivo}")
+                return nome_arquivo
+            except:
+                print("❌ Não foi possível exportar os resultados.")
+                return None
+    
+    def _criar_resumo(self, df_resultado):
+        """Cria um DataFrame com estatísticas resumidas"""
+        resumo_data = {
+            'Metrica': [
+                'Total de Vendedores',
+                'Vendedores com Cancelamento',
+                'Vendedores sem Cancelamento',
+                'Valor Total Faturado (R$)',
+                'Valor Total Cancelado (R$)',
+                'Percentual Total de Cancelamento (%)',
+                'Média do Índice de Cancelamento',
+                'Mediana do Índice de Cancelamento',
+                'Máximo Índice de Cancelamento',
+                'Mínimo Índice de Cancelamento',
+                'Média Percentual Cancelamento (%)',
+                'Quantidade Total Faturada',
+                'Quantidade Total Cancelada',
+                'Percentual Qtd Cancelada (%)',
+                'Notas Faturadas',
+                'Notas Canceladas',
+                'Ticket Médio Faturamento (R$)',
+                'Valor Médio Cancelamento (R$)'
+            ],
+            'Valor': [
+                len(df_resultado),
+                (df_resultado['VALOR_CANCELAMENTO'] > 0).sum(),
+                (df_resultado['VALOR_CANCELAMENTO'] == 0).sum(),
+                df_resultado['VALOR_FATURAMENTO'].sum(),
+                df_resultado['VALOR_CANCELAMENTO'].sum(),
+                (df_resultado['VALOR_CANCELAMENTO'].sum() / df_resultado['VALOR_FATURAMENTO'].sum() * 100) if df_resultado['VALOR_FATURAMENTO'].sum() > 0 else 0,
+                df_resultado['INDICE_CANCELAMENTO'].mean(),
+                df_resultado['INDICE_CANCELAMENTO'].median(),
+                df_resultado['INDICE_CANCELAMENTO'].max(),
+                df_resultado['INDICE_CANCELAMENTO'].min(),
+                df_resultado['PERCENTUAL_CANCELAMENTO'].mean(),
+                df_resultado['TOTAL_QTD_FATURADA'].sum(),
+                df_resultado['TOTAL_QTD_CANCELADA'].sum(),
+                (df_resultado['TOTAL_QTD_CANCELADA'].sum() / df_resultado['TOTAL_QTD_FATURADA'].sum() * 100) if df_resultado['TOTAL_QTD_FATURADA'].sum() > 0 else 0,
+                df_resultado['QTD_NOTAS_FATURADAS'].sum(),
+                df_resultado['QTD_NOTAS_CANCELADAS'].sum(),
+                df_resultado['TICKET_MEDIO_FATURAMENTO'].mean(),
+                df_resultado['VALOR_MEDIO_CANCELAMENTO'].mean() if (df_resultado['VALOR_CANCELAMENTO'] > 0).sum() > 0 else 0
+            ]
+        }
+        return pd.DataFrame(resumo_data)
+    
+    def _criar_analise_estabelecimento(self, df_resultado):
+        """Cria análise por estabelecimento"""
+        estabelecimentos = ['R351', 'R352']
+        analise_data = []
+        
+        for estabelecimento in estabelecimentos:
+            df_filtrado = df_resultado[df_resultado['COD_ESTABELECIMENTO'] == estabelecimento]
+            if len(df_filtrado) > 0:
+                analise_data.append({
+                    'Estabelecimento': estabelecimento,
+                    'Total Vendedores': len(df_filtrado),
+                    'Vendedores com Cancelamento': (df_filtrado['VALOR_CANCELAMENTO'] > 0).sum(),
+                    'Vendedores sem Cancelamento': (df_filtrado['VALOR_CANCELAMENTO'] == 0).sum(),
+                    'Valor Faturado (R$)': df_filtrado['VALOR_FATURAMENTO'].sum(),
+                    'Valor Cancelado (R$)': df_filtrado['VALOR_CANCELAMENTO'].sum(),
+                    'Percentual Cancelamento (%)': (df_filtrado['VALOR_CANCELAMENTO'].sum() / df_filtrado['VALOR_FATURAMENTO'].sum() * 100) if df_filtrado['VALOR_FATURAMENTO'].sum() > 0 else 0,
+                    'Média Índice Cancelamento': df_filtrado['INDICE_CANCELAMENTO'].mean(),
+                    'Média % Cancelamento': df_filtrado['PERCENTUAL_CANCELAMENTO'].mean(),
+                    'Quantidade Faturada': df_filtrado['TOTAL_QTD_FATURADA'].sum(),
+                    'Quantidade Cancelada': df_filtrado['TOTAL_QTD_CANCELADA'].sum(),
+                    'Notas Faturadas': df_filtrado['QTD_NOTAS_FATURADAS'].sum(),
+                    'Notas Canceladas': df_filtrado['QTD_NOTAS_CANCELADAS'].sum()
+                })
+        
+        # Adicionar linha de total
+        analise_data.append({
+            'Estabelecimento': 'TOTAL',
+            'Total Vendedores': len(df_resultado),
+            'Vendedores com Cancelamento': (df_resultado['VALOR_CANCELAMENTO'] > 0).sum(),
+            'Vendedores sem Cancelamento': (df_resultado['VALOR_CANCELAMENTO'] == 0).sum(),
+            'Valor Faturado (R$)': df_resultado['VALOR_FATURAMENTO'].sum(),
+            'Valor Cancelado (R$)': df_resultado['VALOR_CANCELAMENTO'].sum(),
+            'Percentual Cancelamento (%)': (df_resultado['VALOR_CANCELAMENTO'].sum() / df_resultado['VALOR_FATURAMENTO'].sum() * 100) if df_resultado['VALOR_FATURAMENTO'].sum() > 0 else 0,
+            'Média Índice Cancelamento': df_resultado['INDICE_CANCELAMENTO'].mean(),
+            'Média % Cancelamento': df_resultado['PERCENTUAL_CANCELAMENTO'].mean(),
+            'Quantidade Faturada': df_resultado['TOTAL_QTD_FATURADA'].sum(),
+            'Quantidade Cancelada': df_resultado['TOTAL_QTD_CANCELADA'].sum(),
+            'Notas Faturadas': df_resultado['QTD_NOTAS_FATURADAS'].sum(),
+            'Notas Canceladas': df_resultado['QTD_NOTAS_CANCELADAS'].sum()
+        })
+        
+        return pd.DataFrame(analise_data)
+    
+    def _criar_analise_risco(self, df_resultado):
+        """Cria análise por classificação de risco"""
+        classificacoes = ['ALTO RISCO', 'MÉDIO RISCO', 'BAIXO RISCO', 'SEM CANCELAMENTO']
+        analise_data = []
+        
+        for classificacao in classificacoes:
+            df_filtrado = df_resultado[df_resultado['CLASSIFICACAO_RISCO'] == classificacao]
+            if len(df_filtrado) > 0:
+                analise_data.append({
+                    'Classificação Risco': classificacao,
+                    'Total Vendedores': len(df_filtrado),
+                    'Percentual do Total (%)': (len(df_filtrado) / len(df_resultado) * 100),
+                    'Valor Faturado (R$)': df_filtrado['VALOR_FATURAMENTO'].sum(),
+                    'Valor Cancelado (R$)': df_filtrado['VALOR_CANCELAMENTO'].sum(),
+                    'Percentual Cancelamento (%)': (df_filtrado['VALOR_CANCELAMENTO'].sum() / df_filtrado['VALOR_FATURAMENTO'].sum() * 100) if df_filtrado['VALOR_FATURAMENTO'].sum() > 0 else 0,
+                    'Média % Cancelamento': df_filtrado['PERCENTUAL_CANCELAMENTO'].mean(),
+                    'Notas Faturadas': df_filtrado['QTD_NOTAS_FATURADAS'].sum(),
+                    'Notas Canceladas': df_filtrado['QTD_NOTAS_CANCELADAS'].sum()
+                })
+        
+        return pd.DataFrame(analise_data)
+    
+    def gerar_relatorio_resumo(self, df_resultado):
+        """Gera um resumo estatístico do índice de cancelamento"""
+        print("\n" + "="*80)
+        print("RESUMO DO ÍNDICE DE CANCELAMENTO DE NOTAS POR VENDEDOR")
+        print("="*80)
+        
+        # Estatísticas gerais
+        print(f"\n📊 Total de Vendedores: {len(df_resultado)}")
+        print(f"📊 Vendedores com Cancelamento: {(df_resultado['VALOR_CANCELAMENTO'] > 0).sum()}")
+        print(f"📊 Vendedores sem Cancelamento: {(df_resultado['VALOR_CANCELAMENTO'] == 0).sum()}")
+        print(f"📊 Média do Índice de Cancelamento: {df_resultado['INDICE_CANCELAMENTO'].mean():.4f}")
+        print(f"📊 Média do Percentual de Cancelamento: {df_resultado['PERCENTUAL_CANCELAMENTO'].mean():.2f}%")
+        
+        # Valor total faturado e cancelado
+        total_faturado = df_resultado['VALOR_FATURAMENTO'].sum()
+        total_cancelado = df_resultado['VALOR_CANCELAMENTO'].sum()
+        percentual_total = (total_cancelado / total_faturado * 100) if total_faturado > 0 else 0
+        
+        print(f"\n💰 Valor Total Faturado: R$ {total_faturado:,.2f}")
+        print(f"💰 Valor Total Cancelado: R$ {total_cancelado:,.2f}")
+        print(f"💰 Percentual Total de Cancelamento: {percentual_total:.2f}%")
+        
+        # Quantidade total
+        total_qtd_faturada = df_resultado['TOTAL_QTD_FATURADA'].sum()
+        total_qtd_cancelada = df_resultado['TOTAL_QTD_CANCELADA'].sum()
+        percentual_qtd = (total_qtd_cancelada / total_qtd_faturada * 100) if total_qtd_faturada > 0 else 0
+        
+        print(f"\n📦 Quantidade Total Faturada: {total_qtd_faturada:,.0f}")
+        print(f"📦 Quantidade Total Cancelada: {total_qtd_cancelada:,.0f}")
+        print(f"📦 Percentual Quantidade Cancelada: {percentual_qtd:.2f}%")
+        
+        # Top 10 maiores índices
+        print(f"\n🏆 TOP 10 MAIORES ÍNDICES DE CANCELAMENTO:")
+        print("-"*80)
+        top_10_cols = ['RANKING', 'COD_ESTABELECIMENTO', 'VENDEDOR', 'CLASSIFICACAO_RISCO',
+                      'VALOR_FATURAMENTO', 'VALOR_CANCELAMENTO', 'PERCENTUAL_CANCELAMENTO']
+        
+        top_10_cols = [col for col in top_10_cols if col in df_resultado.columns]
+        top_10 = df_resultado.head(10)[top_10_cols]
+        print(top_10.to_string(index=False))
+        
+        # Análise por classificação de risco
+        print(f"\n⚠️  ANÁLISE POR CLASSIFICAÇÃO DE RISCO:")
+        print("-"*80)
+        for classificacao in ['ALTO RISCO', 'MÉDIO RISCO', 'BAIXO RISCO', 'SEM CANCELAMENTO']:
+            df_filtrado = df_resultado[df_resultado['CLASSIFICACAO_RISCO'] == classificacao]
+            if len(df_filtrado) > 0:
+                print(f"\n{classificacao}:")
+                print(f"  Vendedores: {len(df_filtrado)} ({len(df_filtrado)/len(df_resultado)*100:.1f}%)")
+                print(f"  Valor Faturado: R$ {df_filtrado['VALOR_FATURAMENTO'].sum():,.2f}")
+                print(f"  Valor Cancelado: R$ {df_filtrado['VALOR_CANCELAMENTO'].sum():,.2f}")
+        
+        # Análise por estabelecimento
+        print(f"\n🏢 ANÁLISE POR ESTABELECIMENTO:")
+        print("-"*80)
+        for estabelecimento in ['R351', 'R352']:
+            df_filtrado = df_resultado[df_resultado['COD_ESTABELECIMENTO'] == estabelecimento]
+            if len(df_filtrado) > 0:
+                print(f"\n{estabelecimento}:")
+                print(f"  Vendedores: {len(df_filtrado)}")
+                print(f"  Média % Cancelamento: {df_filtrado['PERCENTUAL_CANCELAMENTO'].mean():.2f}%")
+                print(f"  Valor Faturado: R$ {df_filtrado['VALOR_FATURAMENTO'].sum():,.2f}")
+                print(f"  Valor Cancelado: R$ {df_filtrado['VALOR_CANCELAMENTO'].sum():,.2f}")
+    
+    def executar_analise_completa(self, data_inicio='2025-01-01', 
+                                 data_fim='2025-12-31',
+                                 exportar=True):
+        """Executa toda a análise completa"""
+        
+        print(f"\n📂 Diretório de saída configurado: {self.caminho_base}")
+        
+        # Conectar ao banco
+        if not self.conectar_banco():
+            return
+        
+        try:
+            # Obter dados (mesmo período para ambos)
+            df_cancelamentos = self.obter_dados_cancelamentos(data_inicio, data_fim)
+            df_faturamento = self.obter_dados_faturamento(data_inicio, data_fim)
+            
+            if df_cancelamentos is not None and df_faturamento is not None:
+                print(f"\n📊 Dados de cancelamentos obtidos: {len(df_cancelamentos)} registros")
+                print(f"📈 Dados de faturamento obtidos: {len(df_faturamento)} registros")
+                
+                # Verificar se há dados
+                if len(df_cancelamentos) == 0:
+                    print("⚠️  AVISO: Nenhum dado de cancelamento encontrado para o período especificado.")
+                if len(df_faturamento) == 0:
+                    print("⚠️  AVISO: Nenhum dado de faturamento encontrado para o período especificado.")
+                
+                # Calcular índice
+                df_resultado = self.calcular_indice_cancelamento(df_cancelamentos, df_faturamento)
+                
+                if df_resultado is not None and len(df_resultado) > 0:
+                    print(f"\n✅ Cálculo do índice concluído: {len(df_resultado)} registros processados")
+                    
+                    # Exibir primeiras linhas
+                    print("\n📋 Primeiras linhas do resultado:")
+                    print(df_resultado.head().to_string(index=False))
+                    
+                    # Gerar relatório resumo
+                    self.gerar_relatorio_resumo(df_resultado)
+                    
+                    # Exportar resultados
+                    if exportar:
+                        print("\n" + "="*80)
+                        print("💾 EXPORTANDO RESULTADOS PARA EXCEL...")
+                        print("="*80)
+                        arquivo = self.exportar_resultados(df_resultado, formato='excel')
+                        if arquivo:
+                            print(f"\n✅ Arquivo Excel criado com sucesso!")
+                            print(f"📍 Local: {arquivo}")
+                        
+                    return df_resultado
+                else:
+                    print("❌ Erro ao calcular índice de cancelamento ou nenhum dado retornado")
+                    return None
+            else:
+                print("❌ Erro ao obter dados do banco")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Erro durante a execução: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+        finally:
+            # Fechar conexão
+            if self.conn:
+                self.conn.close()
+                print("\n🔒 Conexão com o banco de dados fechada.")
+
+def main():
+    """
+    Função principal para executar o script
+    """
+    print("="*80)
+    print("📊 CÁLCULO DO ÍNDICE DE CANCELAMENTO DE NOTAS POR VENDEDOR")
+    print("="*80)
+    
+    # Criar instância com as credenciais fornecidas
+    analise = CalculoIndiceCancelamento()
+    
+    # Datas personalizáveis
+    datas = {
+        'data_inicio': '2025-01-01',
+        'data_fim': '2025-12-31'
+    }
+    
+    print(f"\n📅 Período de análise:")
+    print(f"De: {datas['data_inicio']} até {datas['data_fim']}")
+    
+    # Perguntar se deseja usar datas diferentes
+    alterar_datas = input("\n📝 Deseja alterar as datas? (s/n): ").strip().lower()
+    
+    if alterar_datas == 's':
+        datas['data_inicio'] = input("Data início (YYYY-MM-DD): ").strip()
+        datas['data_fim'] = input("Data fim (YYYY-MM-DD): ").strip()
+    
+    # Executar análise completa
+    resultados = analise.executar_analise_completa(**datas, exportar=True)
+    
+    if resultados is not None:
+        print("\n" + "="*80)
+        print("✅ ANÁLISE CONCLUÍDA COM SUCESSO!")
+        print("="*80)
+        print(f"📊 Total de vendedores processados: {len(resultados)}")
+        print(f"📂 Arquivo Excel salvo em: {analise.caminho_base}")
+        print("📑 O arquivo contém 5 planilhas com análises detalhadas:")
+        print("   1. Indice_Cancelamento - Dados completos")
+        print("   2. Resumo - Estatísticas gerais")
+        print("   3. Top_20_Maiores - Maiores índices de cancelamento")
+        print("   4. Analise_Estabelecimento - Análise por R351/R352")
+        print("   5. Analise_Risco - Análise por classificação de risco")
+    else:
+        print("\n" + "="*80)
+        print("❌ FALHA NA ANÁLISE")
+        print("="*80)
+
+# Versão simplificada para uso rápido
+def versao_rapida():
+    """
+    Versão rápida sem interação
+    """
+    print("⚡ Executando versão rápida com datas padrão...")
+    
+    analise = CalculoIndiceCancelamento()
+    
+    # Usar datas padrão
+    resultados = analise.executar_analise_completa(
+        data_inicio='2025-01-01',
+        data_fim='2025-12-31',
+        exportar=True
+    )
+    
+    return resultados
+
+# Executar o script
+if __name__ == "__main__":
+    print("="*80)
+    print("📊 CÁLCULO DO ÍNDICE DE CANCELAMENTO DE NOTAS POR VENDEDOR")
+    print("="*80)
+    
+    # Escolher modo de execução
+    print("\n🎯 Modo de execução:")
+    print("1 - Versão interativa (permite alterar datas)")
+    print("2 - Versão rápida (usa datas padrão)")
+    
+    try:
+        modo = input("Escolha (1/2): ").strip()
+        
+        if modo == '1':
+            main()
+        elif modo == '2':
+            versao_rapida()
+        else:
+            print("⚠️  Opção inválida. Executando versão interativa...")
+            main()
+    except KeyboardInterrupt:
+        print("\n\n⏹️  Execução interrompida pelo usuário.")
+    except Exception as e:
+        print(f"\n❌ Erro inesperado: {e}")
+    finally:
+        input("\n👋 Pressione Enter para sair...")
